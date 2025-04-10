@@ -24,6 +24,10 @@ const subscriptionSchema = new mongoose.Schema({
   expiresAt: {
     type: Date,
   },
+  notified75: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 export const Subscription = mongoose.model("Subscription", subscriptionSchema);

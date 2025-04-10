@@ -7,6 +7,9 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import fs from "fs";
 import path from "path";
+import { SavingPlan } from "../Models/Savings.js";
+import { generateOTP } from "../utils/generateOTP.js";
+import { sendOTPMail } from "../utils/emailService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -52,6 +55,20 @@ export const registerUser = async (req, res) => {
 
       await subscription.save();
     }
+
+    const entries = Array.from({ length: 365 }, (_, i) => ({
+      day: i + 1,
+      amount: i + 1,
+      saved: false,
+      savedAt: null,
+    }));
+
+    const savingPlan = new SavingPlan({
+      user: createdUser._id,
+      entries,
+    });
+
+    await savingPlan.save();
 
     res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
@@ -176,6 +193,27 @@ export const updateUser = async (req, res) => {
   }
 };
 
+export const getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await userModal.findById(id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const subscription = await Subscription.findOne({ user: user._id });
+
+    res.status(200).json({
+      message: "User fetched successfully",
+      user: {
+        ...user._doc,
+        subscription,
+      },
+    });
+  } catch (error) {
+    console.error("Fetch error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -267,6 +305,65 @@ export const getAllUsers = async (req, res) => {
     });
   } catch (error) {
     console.error("Fetch users error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const sendOtpForPasswordUpdate = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+    const user = await userModal.findOne({ email });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const otp = generateOTP();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    user.otp = { code: otp, expiresAt };
+    await user.save();
+
+    await sendOTPMail(email, "Piggy365 - Password Change OTP", otp);
+
+    res.status(200).json({ message: "OTP sent to email" });
+  } catch (err) {
+    console.error("OTP send error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const verifyOtpForPasswordUpdate = async (req, res) => {
+  try {
+    const { otp, newPassword, confirmPassword } = req.body;
+
+    if (!otp || !newPassword || !confirmPassword) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    const user = await userModal.findOne({
+      "otp.code": otp,
+      "otp.expiresAt": { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message: "Invalid or expired OTP",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    user.otp = undefined; // Clear OTP after successful verification
+    await user.save();
+
+    res.status(200).json({ message: "Password updated successfully" });
+  } catch (error) {
+    console.error("Error verifying OTP:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
