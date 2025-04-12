@@ -9,15 +9,16 @@ import fs from "fs";
 import path from "path";
 import { SavingPlan } from "../Models/Savings.js";
 import { generateOTP } from "../utils/generateOTP.js";
-import { sendOTPMail } from "../utils/emailService.js";
+import { sendOTPMail, welcomeMessage } from "../utils/emailService.js";
+import dotenv from "dotenv";
 
+dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export const registerUser = async (req, res) => {
   try {
     const { name, email, password, role = "user" } = req.body;
-
     if (!name || !email || !password) {
       return res
         .status(400)
@@ -70,10 +71,14 @@ export const registerUser = async (req, res) => {
 
     await savingPlan.save();
 
-    res.status(201).json({ message: "User registered successfully" });
+    await welcomeMessage(email, "Welcome to Piggy365", name);
+
+    res
+      .status(201)
+      .json({ status: true, message: "User registered successfully" });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ status: false, message: "Server error" });
   }
 };
 
@@ -110,6 +115,7 @@ export const loginUser = async (req, res) => {
     );
 
     res.status(200).json({
+      status: true,
       message: "Login Successful",
       token,
       user: {
@@ -186,7 +192,9 @@ export const updateUser = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.status(200).json({ message: "User updated successfully" });
+    res
+      .status(200)
+      .json({ status: true, message: "User updated successfully" });
   } catch (error) {
     console.error("Update error:", error);
     res.status(500).json({ message: "Server error" });
@@ -202,6 +210,7 @@ export const getUserById = async (req, res) => {
     const subscription = await Subscription.findOne({ user: user._id });
 
     res.status(200).json({
+      status: true,
       message: "User fetched successfully",
       user: {
         ...user._doc,
@@ -243,7 +252,9 @@ export const deleteUser = async (req, res) => {
     await Subscription.deleteMany({ user: id });
     await userModal.findByIdAndDelete(id);
 
-    res.status(200).json({ message: "User deleted successfully" });
+    res
+      .status(200)
+      .json({ status: true, message: "User deleted successfully" });
   } catch (error) {
     console.error("Delete error:", error);
     res.status(500).json({ message: "Server error" });
@@ -297,6 +308,7 @@ export const getAllUsers = async (req, res) => {
     });
 
     res.status(200).json({
+      status: true,
       message: "Users fetched successfully",
       users: userWithSubscriptions,
       totalUsers,
@@ -327,22 +339,19 @@ export const sendOtpForPasswordUpdate = async (req, res) => {
 
     await sendOTPMail(email, "Piggy365 - Password Change OTP", otp);
 
-    res.status(200).json({ message: "OTP sent to email" });
+    res.status(200).json({ status: true, message: "OTP sent to email" });
   } catch (err) {
     console.error("OTP send error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-export const verifyOtpForPasswordUpdate = async (req, res) => {
+export const verifyOtp = async (req, res) => {
   try {
-    const { otp, newPassword, confirmPassword } = req.body;
+    const { otp } = req.body;
 
-    if (!otp || !newPassword || !confirmPassword) {
-      return res.status(400).json({ message: "All fields are required" });
-    }
-    if (newPassword !== confirmPassword) {
-      return res.status(400).json({ message: "Passwords do not match" });
+    if (!otp) {
+      return res.status(400).json({ message: "OTP is required" });
     }
 
     const user = await userModal.findOne({
@@ -351,19 +360,70 @@ export const verifyOtpForPasswordUpdate = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(400).json({
-        message: "Invalid or expired OTP",
-      });
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    // ✅ Generate a short-lived token just for password reset
+    const resetToken = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET || "your_jwt_secret",
+      { expiresIn: "10m" }
+    );
+
+    // ✅ Store token and expiration in DB
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+    user.otp = undefined; // Optional: clear OTP
+    await user.save();
+
+    res.status(200).json({
+      status: true,
+      message: "OTP verified successfully",
+      resetToken,
+    });
+  } catch (error) {
+    console.error("Error verifying OTP:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { newPassword, confirmPassword, token } = req.body;
+
+    if (!token || !newPassword || !confirmPassword) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    // ✅ Verify token
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET || "your_jwt_secret");
+    } catch (err) {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+
+    const user = await userModal.findById(payload.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
-    user.otp = undefined; // Clear OTP after successful verification
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpiresAt = undefined;
+    user.otp = undefined; // Optional: clear OTP
     await user.save();
 
-    res.status(200).json({ message: "Password updated successfully" });
+    res
+      .status(200)
+      .json({ status: true, message: "Password reset successfully" });
   } catch (error) {
-    console.error("Error verifying OTP:", error);
+    console.error("Error resetting password:", error);
     res.status(500).json({ message: "Server error" });
   }
 };

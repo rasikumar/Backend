@@ -26,6 +26,9 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  resetPasswordToken: { type: String },
+  resetPasswordExpiresAt: { type: Date },
+  lastPasswordReset: { type: Date },
 });
 
 // Index for OTP expiration cleanup (optional but recommended)
