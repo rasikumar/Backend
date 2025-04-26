@@ -134,6 +134,40 @@ export const loginUser = async (req, res) => {
   }
 };
 
+export const getDashboard = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized access" });
+    }
+
+    const savingPlan = await SavingPlan.findOne({ user: userId });
+
+    if (!savingPlan) {
+      return res.status(404).json({ message: "Saving plan not found" });
+    }
+
+    const pendingEntries = savingPlan.entries.filter((entry) => !entry.saved);
+    const totalDaysPending = pendingEntries.length;
+
+    const { entries, ...savingsWithoutEntries } = savingPlan.toObject();
+
+    res.status(200).json({
+      status: true,
+      message: "Dashboard data fetched successfully",
+      data: {
+        savings: {
+          ...savingsWithoutEntries, // include all savings data except entries
+          totalDaysPending, // add totalDaysPending here
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching dashboard:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;

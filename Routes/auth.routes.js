@@ -3,6 +3,7 @@ import { Router } from "express";
 import {
   deleteUser,
   getAllUsers,
+  getDashboard,
   getUserById,
   loginUser,
   registerUser,
@@ -21,6 +22,7 @@ const authRoutes = Router();
 // // @route   POST /api/auth/signup
 authRoutes.post("/signup", registerUser);
 authRoutes.post("/login", loginUser);
+authRoutes.get("/dashboard", Authenticate, getDashboard);
 authRoutes.put(
   "/updateUser/:id",
   Authenticate,

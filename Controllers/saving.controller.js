@@ -89,7 +89,9 @@ export const getAllUsersProgress = async (req, res) => {
     res.status(200).json(allProgress);
   } catch (err) {
     console.error("Error fetching all users' progress:", err);
-    res.status(500).json({ error: "Could not fetch users' progress" });
+    res
+      .status(500)
+      .json({ status: false, error: "Could not fetch users' progress" });
   }
 };
 
@@ -97,35 +99,105 @@ export const markDayAsSaved = async (req, res) => {
   try {
     const userId = req.user.id;
     const { day } = req.body;
-
     if (!day || day < 1 || day > 365) {
-      return res.status(400).json({ error: "Day must be between 1 and 365" });
+      return res
+        .status(400)
+        .json({ status: 400, message: "Day must be between 1 and 365" });
     }
 
     const plan = await SavingPlan.findOne({ user: userId });
     if (!plan) {
-      return res.status(404).json({ error: "Plan not found" });
+      return res.status(404).json({ status: 404, message: "Plan not found" });
     }
 
     const entry = plan.entries.find((e) => e.day === day);
     if (!entry) {
-      return res.status(404).json({ error: `Day ${day} not found` });
+      return res
+        .status(404)
+        .json({ status: 404, message: `Day ${day} not found` });
     }
 
     if (entry.saved) {
-      return res.status(400).json({ error: `Day ${day} already saved` });
+      return res
+        .status(400)
+        .json({ status: 400, message: `Day ${day} already saved` });
     }
 
     entry.saved = true;
     entry.savedAt = new Date();
     plan.currentSaved += entry.amount;
 
+    if (day === plan.streak + 1) {
+      plan.streak += 1;
+    } else {
+      plan.streak = 1;
+    }
+
     await plan.save();
 
-    res
-      .status(200)
-      .json({ message: `Day ${day} saved (₹${entry.amount})`, plan });
+    res.status(200).json({
+      staus: true,
+      message: `Day ${day} saved (₹${entry.amount}). Current streak: ${plan.streak} days`,
+      plan,
+    });
   } catch (err) {
     res.status(500).json({ error: "Could not mark day as saved" });
+  }
+};
+
+export const getAllEntries = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 50, day, status } = req.query;
+
+    const plan = await SavingPlan.findOne({ user: userId });
+
+    if (!plan) {
+      return res.status(404).json({ status: false, message: "Plan not found" });
+    }
+
+    let filteredEntries = plan.entries;
+
+    // Day filter
+    if (day) {
+      filteredEntries = filteredEntries.filter(
+        (entry) => entry.day === Number(day)
+      );
+    }
+
+    // Status filter (pending or paid)
+    if (status) {
+      if (status === "pending") {
+        filteredEntries = filteredEntries.filter(
+          (entry) => entry.saved === false
+        );
+      } else if (status === "paid") {
+        filteredEntries = filteredEntries.filter(
+          (entry) => entry.saved === true
+        );
+      }
+    }
+
+    const totalEntries = filteredEntries.length;
+    const totalPages = Math.ceil(totalEntries / limit);
+    const currentPage = Number(page);
+
+    // Pagination logic
+    const startIndex = (currentPage - 1) * limit;
+    const paginatedEntries = filteredEntries.slice(
+      startIndex,
+      startIndex + Number(limit)
+    );
+
+    return res.status(200).json({
+      status: true,
+      entries: paginatedEntries,
+      totalPages,
+      currentPage,
+      totalEntries,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ status: false, message: "Server error" });
   }
 };

@@ -31,6 +31,10 @@ const savingPlanSchema = new mongoose.Schema(
       default: Date.now,
     },
     entries: [dailyEntrySchema],
+    streak: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );
