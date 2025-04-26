@@ -24,7 +24,7 @@ authRoutes.post("/signup", registerUser);
 authRoutes.post("/login", loginUser);
 authRoutes.get("/dashboard", Authenticate, getDashboard);
 authRoutes.put(
-  "/updateUser/:id",
+  "/updateUser",
   Authenticate,
   profileUpload.single("profilePicture"),
   updateUser

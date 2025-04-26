@@ -170,12 +170,13 @@ export const getDashboard = async (req, res) => {
 
 export const updateUser = async (req, res) => {
   try {
-    const { id } = req.params;
-
+    const id = req.user.id;
     const { name, email, phone } = req.body;
     const user = await userModal.findById(id);
+
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    // Email validation
     if (email && email !== user.email) {
       const emailUsed = await userModal.findOne({ email });
       if (emailUsed && emailUsed._id.toString() !== id) {
@@ -188,8 +189,9 @@ export const updateUser = async (req, res) => {
     if (email) updates.email = email;
     if (phone) updates.phone = phone;
 
+    // Handle profile picture update
     if (req.file) {
-      // Delete old image if it exists
+      // Check if the old profile picture exists, then delete it
       if (user.profilePicture) {
         const oldImagePath = path.join(
           __dirname,
@@ -199,14 +201,12 @@ export const updateUser = async (req, res) => {
           path.basename(user.profilePicture)
         );
 
-        fs.access(oldImagePath, fs.constants.F_OK, (err) => {
-          if (!err) {
-            fs.unlink(oldImagePath, (unlinkErr) => {
-              if (unlinkErr)
-                console.error("Failed to delete old image:", unlinkErr);
-            });
-          }
-        });
+        try {
+          await fs.promises.access(oldImagePath, fs.constants.F_OK);
+          await fs.promises.unlink(oldImagePath);
+        } catch (err) {
+          console.error("Failed to delete old image:", err);
+        }
       }
 
       // Add new profile picture
@@ -217,6 +217,7 @@ export const updateUser = async (req, res) => {
       return res.status(400).json({ message: "No fields to update" });
     }
 
+    // Update the user
     const updatedUser = await userModal.findByIdAndUpdate(id, updates, {
       new: true,
       runValidators: true,
@@ -228,7 +229,11 @@ export const updateUser = async (req, res) => {
 
     res
       .status(200)
-      .json({ status: true, message: "User updated successfully" });
+      .json({
+        status: true,
+        message: "User updated successfully",
+        updatedUser,
+      });
   } catch (error) {
     console.error("Update error:", error);
     res.status(500).json({ message: "Server error" });
