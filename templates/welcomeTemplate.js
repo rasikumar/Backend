@@ -9,7 +9,7 @@ export const welcomeTemplate = (name) => {
           </p>
           <p style="font-size: 16px; color: #475569;">Your journey to smarter savings starts here 🎉</p>
           <div style="margin: 30px 0;">
-            <a href="https://yourdomain.com/dashboard" style="background-color: #0ea5e9; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">
+            <a href="https://backend-production-232a.up.railway.app/dashboard" style="background-color: #0ea5e9; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">
               Go to Dashboard
             </a>
           </div>
